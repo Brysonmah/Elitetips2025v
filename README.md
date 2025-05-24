@@ -1,10 +1,12 @@
-// Firebase setup import { initializeApp } from "firebase/app"; import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth"; import { getFirestore, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc } from "firebase/firestore";
+// .env.local (DO NOT COMMIT TO GIT) // NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyD8DllQ3VICJMZSvN-rPTjl4DuPx30JYlo // NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=elitetips-a0a0d.firebaseapp.com // NEXT_PUBLIC_FIREBASE_PROJECT_ID=elitetips-a0a0d // NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=elitetips-a0a0d.appspot.com // NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=799283183526 // NEXT_PUBLIC_FIREBASE_APP_ID=1:799283183526:web:8010bc7f1f0ce1bccd1967 // NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-LQQJ94WWX2 // NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY=pk_test_113b88ba8174bcfc85f8b9795dbf0157aa35a60d
 
-const firebaseConfig = { apiKey: "AIzaSyD8DllQ3VICJMZSvN-rPTjl4DuPx30JYlo", authDomain: "elitetips-a0a0d.firebaseapp.com", projectId: "elitetips-a0a0d", storageBucket: "elitetips-a0a0d.firebasestorage.app", messagingSenderId: "799283183526", appId: "1:799283183526:web:8010bc7f1f0ce1bccd1967", measurementId: "G-LQQJ94WWX2" };
+import { useState, useEffect } from "react"; import { initializeApp } from "firebase/app"; import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth"; import { getFirestore, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc } from "firebase/firestore";
+
+import { Button } from "@/components/ui/button"; import { Card, CardContent } from "@/components/ui/card"; import { Switch } from "@/components/ui/switch"; import { Moon, Sun, Trash2, Pencil, LogOut } from "lucide-react"; import { Input } from "@/components/ui/input"; import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID, storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET, messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID, measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, };
 
 const app = initializeApp(firebaseConfig); const auth = getAuth(app); const db = getFirestore(app);
-
-// React app starts import { useState, useEffect } from "react"; import { Button } from "@/components/ui/button"; import { Card, CardContent } from "@/components/ui/card"; import { Switch } from "@/components/ui/switch"; import { Moon, Sun, Trash2, Pencil } from "lucide-react"; import { Input } from "@/components/ui/input"; import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function EliteTipsHome() { const [darkMode, setDarkMode] = useState(false); const [loggedIn, setLoggedIn] = useState(false); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [amount, setAmount] = useState(20); const [hasPaid, setHasPaid] = useState(false); const [predictions, setPredictions] = useState([]); const [newPrediction, setNewPrediction] = useState({ match: "", tip: "", confidence: "" }); const [editingId, setEditingId] = useState(null); const [payments, setPayments] = useState([]);
 
@@ -12,25 +14,33 @@ const isAdmin = email === "brysonmah1@gmail.com";
 
 useEffect(() => { const script = document.createElement("script"); script.src = "https://js.paystack.co/v1/inline.js"; script.async = true; document.body.appendChild(script); }, []);
 
+useEffect(() => { const saved = localStorage.getItem("darkMode") === "true"; setDarkMode(saved); }, []);
+
+useEffect(() => { localStorage.setItem("darkMode", darkMode); }, [darkMode]);
+
+useEffect(() => { if (loggedIn) { fetchPredictions(); fetchPayments(); } }, [loggedIn]);
+
 const fetchPredictions = async () => { const snap = await getDocs(collection(db, "predictions")); const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); setPredictions(data); };
 
 const fetchPayments = async () => { const snap = await getDocs(collection(db, "payments")); const data = snap.docs.map(doc => ({ email: doc.id, ...doc.data() })); setPayments(data); };
 
-const checkPaymentStatus = async (userEmail) => { const ref = doc(db, "payments", userEmail); const snap = await getDoc(ref); if (snap.exists()) setHasPaid(true); else setHasPaid(false); fetchPredictions(); };
+const checkPaymentStatus = async (userEmail) => { const ref = doc(db, "payments", userEmail); const snap = await getDoc(ref); setHasPaid(snap.exists()); };
 
-const handleLogin = async () => { try { const res = await signInWithEmailAndPassword(auth, email, password); setLoggedIn(true); checkPaymentStatus(res.user.email); fetchPayments(); } catch { alert("Login failed"); } };
+const handleLogin = async () => { try { const res = await signInWithEmailAndPassword(auth, email, password); setLoggedIn(true); checkPaymentStatus(res.user.email); } catch { alert("Login failed"); } };
 
 const handleSignup = async () => { try { const res = await createUserWithEmailAndPassword(auth, email, password); setLoggedIn(true); } catch { alert("Signup failed"); } };
 
-const handlePaystack = () => { const handler = window.PaystackPop.setup({ key: "pk_test_113b88ba8174bcfc85f8b9795dbf0157aa35a60d", email: email, amount: amount * 100, currency: "KES", callback: async function (response) { await setDoc(doc(db, "payments", email), { reference: response.reference, amount, timestamp: new Date().toISOString() }); alert("Payment successful!"); setHasPaid(true); fetchPredictions(); fetchPayments(); }, onClose: function () { alert("Payment closed"); }, }); handler.openIframe(); };
+const handleLogout = async () => { await signOut(auth); setLoggedIn(false); setEmail(""); setPassword(""); setHasPaid(false); };
 
-const handleAddOrUpdatePrediction = async () => { if (!newPrediction.match || !newPrediction.tip) return; if (editingId) { await updateDoc(doc(db, "predictions", editingId), newPrediction); setEditingId(null); } else { await addDoc(collection(db, "predictions"), newPrediction); } setNewPrediction({ match: "", tip: "", confidence: "" }); fetchPredictions(); };
+const handlePaystack = () => { const handler = window.PaystackPop.setup({ key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY, email: email, amount: amount * 100, currency: "KES", callback: async function (response) { await setDoc(doc(db, "payments", email), { reference: response.reference, amount, timestamp: new Date().toISOString() }); alert("Payment successful!"); setHasPaid(true); fetchPredictions(); fetchPayments(); }, onClose: function () { alert("Payment closed"); }, }); handler.openIframe(); };
+
+const handleAddOrUpdatePrediction = async () => { if (!newPrediction.match || !newPrediction.tip) return; const duplicate = predictions.find(p => p.match === newPrediction.match); if (duplicate && !editingId) { alert("Prediction for this match already exists"); return; } if (editingId) { await updateDoc(doc(db, "predictions", editingId), newPrediction); setEditingId(null); } else { await addDoc(collection(db, "predictions"), newPrediction); } setNewPrediction({ match: "", tip: "", confidence: "" }); fetchPredictions(); };
 
 const handleEdit = (prediction) => { setNewPrediction({ match: prediction.match, tip: prediction.tip, confidence: prediction.confidence }); setEditingId(prediction.id); };
 
-const handleDelete = async (id) => { await deleteDoc(doc(db, "predictions", id)); fetchPredictions(); };
+const handleDelete = async (id) => { if (window.confirm("Delete this prediction?")) { await deleteDoc(doc(db, "predictions", id)); fetchPredictions(); } };
 
-return ( <div className={darkMode ? "bg-black text-white min-h-screen" : "bg-white text-black min-h-screen"}> <header className="flex justify-between items-center p-4 shadow-md"> <h1 className="text-2xl font-bold">EliteTips</h1> <div className="flex items-center gap-2"> <span>{darkMode ? <Moon /> : <Sun />}</span> <Switch checked={darkMode} onCheckedChange={() => setDarkMode(!darkMode)} /> </div> </header>
+return ( <div className={darkMode ? "bg-black text-white min-h-screen" : "bg-white text-black min-h-screen"}> <header className="flex justify-between items-center p-4 shadow-md"> <h1 className="text-2xl font-bold">EliteTips</h1> <div className="flex items-center gap-2"> <span>{darkMode ? <Moon /> : <Sun />}</span> <Switch checked={darkMode} onCheckedChange={() => setDarkMode(!darkMode)} /> {loggedIn && <Button onClick={handleLogout} variant="outline"><LogOut size={18} className="mr-1" />Logout</Button>} </div> </header>
 
 <main className="p-4 grid gap-6">
     <Tabs defaultValue="predictions" className="w-full">
@@ -112,27 +122,10 @@ return ( <div className={darkMode ? "bg-black text-white min-h-screen" : "bg-whi
             <h2 className="text-xl font-semibold mb-4">Admin Dashboard</h2>
             {isAdmin ? (
               <>
-                <Input
-                  placeholder="Match Title"
-                  value={newPrediction.match}
-                  onChange={(e) => setNewPrediction({ ...newPrediction, match: e.target.value })}
-                  className="mb-2"
-                />
-                <Input
-                  placeholder="Prediction Tip"
-                  value={newPrediction.tip}
-                  onChange={(e) => setNewPrediction({ ...newPrediction, tip: e.target.value })}
-                  className="mb-2"
-                />
-                <Input
-                  placeholder="Confidence (optional)"
-                  value={newPrediction.confidence}
-                  onChange={(e) => setNewPrediction({ ...newPrediction, confidence: e.target.value })}
-                  className="mb-4"
-                />
-                <Button onClick={handleAddOrUpdatePrediction}>
-                  {editingId ? "Update Prediction" : "Add Prediction"}
-                </Button>
+                <Input placeholder="Match Title" value={newPrediction.match} onChange={(e) => setNewPrediction({ ...newPrediction, match: e.target.value })} className="mb-2" />
+                <Input placeholder="Prediction Tip" value={newPrediction.tip} onChange={(e) => setNewPrediction({ ...newPrediction, tip: e.target.value })} className="mb-2" />
+                <Input placeholder="Confidence (optional)" value={newPrediction.confidence} onChange={(e) => setNewPrediction({ ...newPrediction, confidence: e.target.value })} className="mb-4" />
+                <Button onClick={handleAddOrUpdatePrediction}>{editingId ? "Update Prediction" : "Add Prediction"}</Button>
 
                 <h3 className="text-lg mt-6 mb-2">Manage Predictions</h3>
                 <ul className="space-y-2">
@@ -152,9 +145,7 @@ return ( <div className={darkMode ? "bg-black text-white min-h-screen" : "bg-whi
                 <h3 className="text-lg mt-6 mb-2">Payment History</h3>
                 <ul className="space-y-1">
                   {payments.map((p, i) => (
-                    <li key={i}>
-                      {p.email}: KES {p.amount} – {new Date(p.timestamp).toLocaleString()}
-                    </li>
+                    <li key={i}>{p.email}: KES {p.amount} – {new Date(p.timestamp).toLocaleString()}</li>
                   ))}
                 </ul>
               </>
@@ -170,4 +161,3 @@ return ( <div className={darkMode ? "bg-black text-white min-h-screen" : "bg-whi
 
 ); }
 
-# Elitetips2025v
